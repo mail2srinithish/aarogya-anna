@@ -1,0 +1,41 @@
+sequenceDiagram
+    autonumber
+    
+    box rgb(240, 248, 255) Client Side
+    actor User
+    participant App as React UI
+    end
+    
+    box rgb(255, 239, 213) Server Infrastructure
+    participant API as Express API Server
+    participant DB as MySQL DB
+    participant Cache as Redis
+    participant ExtAPI as External API
+    end
+    
+    User->>App: Clicks "Generate Weekly Plan"
+    App->>API: POST /api/meals/generate (Token included)
+    
+    API->>Cache: Check if Plan cached?
+    alt is cached
+      Cache-->>API: Return Cached Data
+    else not cached
+      API->>DB: Fetch User Health & Allergy Profile
+      DB-->>API: Returns Profile Data
+      
+      API->>DB: Fetch Local Suitable Recipes
+      DB-->>API: Local Recipes Match
+      
+      opt Needs More Recipes
+         API->>ExtAPI: Request New Variety Match
+         ExtAPI-->>API: Return New Recipes JSON
+      end
+      
+      API->>API: Algorithm structures 7-day schedule
+      API->>DB: Save new Meal Plan to `meal_plans`
+      API->>Cache: Set Plan Data Cache (TTL 1 hour)
+    end
+    
+    API-->>App: Respond with generated Plan JSON
+    App->>App: Render Plan onto the dashboard UI
+    App-->>User: User sees their healthy menu schedule
