@@ -1,6 +1,7 @@
 /**
- * Meal Plan Store — shared Zustand store with localStorage persistence
- * Used by MealPlannerPage, RecipeDetailPage, SupplementsPage, ChatbotPage
+ * Meal Plan Store — multi-week Zustand store with localStorage persistence.
+ * Supports current week (weekPlan) + any future/past week (weekPlans[key]).
+ * All actions accept an optional weekKey; null/undefined = current week.
  */
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
@@ -31,68 +32,177 @@ function buildEmpty() {
   return plan
 }
 
+// ─── Date utilities (exported for use in components) ──────────────────────────
+
+/** Returns "YYYY-MM-DD" for the Monday of the week `weekOffset` weeks from today. */
+export function getMondayKey(weekOffset = 0) {
+  const d = new Date()
+  const day = d.getDay() // 0=Sun
+  const daysToMon = day === 0 ? -6 : 1 - day
+  d.setDate(d.getDate() + daysToMon + weekOffset * 7)
+  d.setHours(0, 0, 0, 0)
+  return d.toISOString().slice(0, 10)
+}
+
+/** Returns an array of 7 Date objects (Mon–Sun) for the given Monday key. */
+export function getWeekDates(mondayKey) {
+  const monday = new Date(mondayKey + 'T00:00:00')
+  return DAYS.map((_, i) => {
+    const d = new Date(monday)
+    d.setDate(monday.getDate() + i)
+    return d
+  })
+}
+
+/** Returns "YYYY-MM-DD" for a given Date. */
+export function dateKey(d) {
+  return d.toISOString().slice(0, 10)
+}
+
+/** Returns today's DAYS index (Mon=0 … Sun=6), or -1 if not this week. */
+export function getTodayDayIndex(mondayKey) {
+  const today = dateKey(new Date())
+  const dates  = getWeekDates(mondayKey)
+  return dates.findIndex((d) => dateKey(d) === today)
+}
+
+// ─── Store ────────────────────────────────────────────────────────────────────
+
 export const useMealPlanStore = create(
   persist(
-    (set) => ({
-      weekPlan: buildEmpty(),
+    (set, get) => ({
+      // Current week (backward-compat: ChatbotPage, AddToPlanModal, Dashboard all use this)
+      weekPlan:  buildEmpty(),
+      // Future / past weeks keyed by Monday date string
+      weekPlans: {},
       mealCount: 4,
+      // Per-day skipped slots: { weekKey_or_'current': { day: [slotId, ...] } }
+      skippedSlots: {},
 
-      /** Add a food/recipe/supplement item to a specific day + meal slot */
-      addItem: (day, slotId, food, portion_g = 250) =>
-        set((state) => {
-          const dayPlan = state.weekPlan[day] || {}
-          const slot = dayPlan[slotId] || []
+      // ── Internal helper ──────────────────────────────────────────────────
+      _plan:  (weekKey) => weekKey ? (get().weekPlans[weekKey] ?? buildEmpty()) : get().weekPlan,
+      _setPlan: (weekKey, plan) => weekKey
+        ? set((s) => ({ weekPlans: { ...s.weekPlans, [weekKey]: plan } }))
+        : set({ weekPlan: plan }),
+
+      // ── Add one item to a specific day + slot ─────────────────────────────
+      addItem: (day, slotId, food, portion_g = 250, weekKey = null) =>
+        set((s) => {
+          const base = weekKey ? (s.weekPlans[weekKey] ?? buildEmpty()) : s.weekPlan
+          const dayPlan = base[day] ?? {}
+          const slot    = dayPlan[slotId] ?? []
+          const updated = { ...base, [day]: { ...dayPlan, [slotId]: [...slot, { uid: uid(), food, portion_g }] } }
+          return weekKey ? { weekPlans: { ...s.weekPlans, [weekKey]: updated } } : { weekPlan: updated }
+        }),
+
+      // ── Add same item to ALL 7 days in a slot (template / repeat) ─────────
+      addItemAllDays: (slotId, food, portion_g = 250, weekKey = null) =>
+        set((s) => {
+          const base = weekKey ? (s.weekPlans[weekKey] ?? buildEmpty()) : s.weekPlan
+          const updated = { ...base }
+          DAYS.forEach((day) => {
+            const dp = updated[day] ?? {}
+            updated[day] = { ...dp, [slotId]: [...(dp[slotId] ?? []), { uid: uid(), food, portion_g }] }
+          })
+          return weekKey ? { weekPlans: { ...s.weekPlans, [weekKey]: updated } } : { weekPlan: updated }
+        }),
+
+      // ── Remove one item ───────────────────────────────────────────────────
+      removeItem: (day, slotId, itemUid, weekKey = null) =>
+        set((s) => {
+          const base = weekKey ? (s.weekPlans[weekKey] ?? buildEmpty()) : s.weekPlan
+          const updated = {
+            ...base,
+            [day]: { ...base[day], [slotId]: (base[day]?.[slotId] ?? []).filter((i) => i.uid !== itemUid) },
+          }
+          return weekKey ? { weekPlans: { ...s.weekPlans, [weekKey]: updated } } : { weekPlan: updated }
+        }),
+
+      // ── Update portion ────────────────────────────────────────────────────
+      updatePortion: (day, slotId, itemUid, portion_g, weekKey = null) =>
+        set((s) => {
+          const base = weekKey ? (s.weekPlans[weekKey] ?? buildEmpty()) : s.weekPlan
+          const updated = {
+            ...base,
+            [day]: {
+              ...base[day],
+              [slotId]: (base[day]?.[slotId] ?? []).map((i) => i.uid === itemUid ? { ...i, portion_g } : i),
+            },
+          }
+          return weekKey ? { weekPlans: { ...s.weekPlans, [weekKey]: updated } } : { weekPlan: updated }
+        }),
+
+      // ── Move item between slots / days (drag & drop) ──────────────────────
+      moveItem: (fromDay, fromSlotId, itemUid, toDay, toSlotId, weekKey = null) =>
+        set((s) => {
+          const base = weekKey ? (s.weekPlans[weekKey] ?? buildEmpty()) : s.weekPlan
+          const fromSlot = base[fromDay]?.[fromSlotId] ?? []
+          const item     = fromSlot.find((i) => i.uid === itemUid)
+          if (!item) return s
+          const toSlot = base[toDay]?.[toSlotId] ?? []
+          const updated = {
+            ...base,
+            [fromDay]: { ...base[fromDay], [fromSlotId]: fromSlot.filter((i) => i.uid !== itemUid) },
+            [toDay]:   { ...base[toDay],   [toSlotId]:   [...toSlot, { ...item, uid: uid() }] },
+          }
+          return weekKey ? { weekPlans: { ...s.weekPlans, [weekKey]: updated } } : { weekPlan: updated }
+        }),
+
+      // ── Clear one slot ────────────────────────────────────────────────────
+      clearSlot: (day, slotId, weekKey = null) =>
+        set((s) => {
+          const base = weekKey ? (s.weekPlans[weekKey] ?? buildEmpty()) : s.weekPlan
+          const updated = { ...base, [day]: { ...base[day], [slotId]: [] } }
+          return weekKey ? { weekPlans: { ...s.weekPlans, [weekKey]: updated } } : { weekPlan: updated }
+        }),
+
+      // ── Clear one day ─────────────────────────────────────────────────────
+      clearDay: (day, weekKey = null) =>
+        set((s) => {
+          const base    = weekKey ? (s.weekPlans[weekKey] ?? buildEmpty()) : s.weekPlan
+          const cleared = Object.fromEntries(SLOT_IDS.map((id) => [id, []]))
+          const updated = { ...base, [day]: cleared }
+          return weekKey ? { weekPlans: { ...s.weekPlans, [weekKey]: updated } } : { weekPlan: updated }
+        }),
+
+      // ── Reset an entire week ──────────────────────────────────────────────
+      resetWeek: (weekKey = null) =>
+        set((s) => {
+          if (!weekKey) return { weekPlan: buildEmpty() }
+          const { [weekKey]: _, ...rest } = s.weekPlans
+          return { weekPlans: rest }
+        }),
+
+      // ── Per-day slot skip (hide a slot for one specific day) ─────────────
+      toggleSkipSlot: (day, slotId, weekKey = null) =>
+        set((s) => {
+          const key      = weekKey || 'current'
+          const existing = s.skippedSlots[key]?.[day] || []
+          const newList  = existing.includes(slotId)
+            ? existing.filter((id) => id !== slotId)
+            : [...existing, slotId]
           return {
-            weekPlan: {
-              ...state.weekPlan,
-              [day]: { ...dayPlan, [slotId]: [...slot, { uid: uid(), food, portion_g }] },
+            skippedSlots: {
+              ...s.skippedSlots,
+              [key]: { ...(s.skippedSlots[key] || {}), [day]: newList },
             },
           }
         }),
 
-      /** Remove an item by its uid */
-      removeItem: (day, slotId, itemUid) =>
-        set((state) => ({
-          weekPlan: {
-            ...state.weekPlan,
-            [day]: {
-              ...state.weekPlan[day],
-              [slotId]: (state.weekPlan[day][slotId] || []).filter((i) => i.uid !== itemUid),
-            },
-          },
-        })),
+      isSlotSkipped: (day, slotId, weekKey = null) => {
+        const key = weekKey || 'current'
+        return (get().skippedSlots[key]?.[day] || []).includes(slotId)
+      },
 
-      /** Update portion size for an item */
-      updatePortion: (day, slotId, itemUid, portion_g) =>
-        set((state) => ({
-          weekPlan: {
-            ...state.weekPlan,
-            [day]: {
-              ...state.weekPlan[day],
-              [slotId]: (state.weekPlan[day][slotId] || []).map((i) =>
-                i.uid === itemUid ? { ...i, portion_g } : i
-              ),
-            },
-          },
-        })),
+      // ── Replace current weekPlan (e.g. AI-generated) ─────────────────────
+      setWeekPlan: (plan) => set({ weekPlan: plan }),
 
-      /** Set number of active meal slots (2–6) */
-      setMealCount: (count) => set({ mealCount: Math.min(6, Math.max(2, count)) }),
-
-      /** Clear one day */
-      clearDay: (day) =>
-        set((state) => ({
-          weekPlan: {
-            ...state.weekPlan,
-            [day]: Object.fromEntries(SLOT_IDS.map((id) => [id, []])),
-          },
-        })),
-
-      /** Replace entire weekPlan (e.g. AI-generated plan) */
-      setWeekPlan: (weekPlan) => set({ weekPlan }),
-
-      /** Full reset */
-      resetWeek: () => set({ weekPlan: buildEmpty() }),
+      // ── Meal slot count (2–6) ─────────────────────────────────────────────
+      setMealCount: (countOrFn) =>
+        set((s) => {
+          const next = typeof countOrFn === 'function' ? countOrFn(s.mealCount) : countOrFn
+          return { mealCount: Math.min(6, Math.max(2, Number(next) || 4)) }
+        }),
     }),
     { name: 'aarogya-meal-plan' }
   )

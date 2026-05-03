@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import mockRecipes from '../data/mockRecipes'
@@ -75,6 +75,63 @@ function prepDisplay(mins) {
   const h = Math.floor(mins / 60)
   const m = mins % 60
   return m ? `${h}h ${m}m` : `${h}h`
+}
+
+// ─── Food item category labels ────────────────────────────────────────────────
+
+const CATEGORY_LABELS = {
+  fruit: 'Fruit', vegetable: 'Vegetable', legume: 'Legume', nut_seed: 'Nut & Seed',
+  grain: 'Grain & Cereal', millet: 'Millet', dairy: 'Dairy', fermented: 'Fermented',
+  spice: 'Spice & Herb', herb: 'Herb', dish: 'Dish', sweet: 'Sweet',
+  snack: 'Snack', beverage: 'Beverage', meat: 'Meat', seafood: 'Fish & Seafood',
+  egg: 'Egg', oil: 'Oil & Fat', condiment: 'Condiment', bread: 'Bread',
+}
+
+// ─── Food Item Hero (module-level — must NOT be defined inside render) ────────
+
+function FoodItemHero({ recipe: r, isSaved: sv, onSave, onAddToPlan }) {
+  const { imageUrl, isLoading: imgLoad } = useFoodImage(r)
+  const [imgErr, setImgErr] = useState(false)
+  const grad = CATEGORY_GRADIENTS[r.category] || 'from-surface-container to-surface-container-high'
+  const showImg = imageUrl && !imgErr
+  return (
+    <div className="relative h-52 sm:h-72 rounded-2xl overflow-hidden mb-6 shadow-md">
+      {imgLoad && !showImg && <div className={`w-full h-full bg-gradient-to-br ${grad} animate-pulse`} />}
+      {showImg && (
+        <img src={imageUrl} alt={r.name} className="w-full h-full object-cover"
+          onError={() => setImgErr(true)} />
+      )}
+      {!showImg && !imgLoad && (
+        <div className={`w-full h-full flex items-center justify-center bg-gradient-to-br ${grad}`}>
+          <span className="text-8xl sm:text-9xl select-none">{r.food_emoji || '🍽️'}</span>
+        </div>
+      )}
+      <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none" />
+      <div className="absolute bottom-4 left-4 flex items-center gap-2">
+        <span className={`text-sm font-black px-3 py-1.5 rounded-xl shadow-lg ${scoreColorClass(r.health_score)}`}>
+          Health Score {r.health_score}
+        </span>
+        {r.category && (
+          <span className="text-xs font-semibold px-3 py-1.5 rounded-xl bg-black/50 text-white backdrop-blur-sm">
+            {CATEGORY_LABELS[r.category] || r.category}
+          </span>
+        )}
+      </div>
+      <div className="absolute top-4 right-4 flex gap-2">
+        <button onClick={onAddToPlan}
+          className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-semibold border transition-colors backdrop-blur-sm bg-secondary-container text-secondary border-secondary/30 hover:bg-secondary hover:text-white">
+          <span className="material-symbols-outlined text-[16px]">calendar_add_on</span>
+          Add to Plan
+        </button>
+        <button onClick={onSave}
+          className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-semibold border transition-colors backdrop-blur-sm
+            ${sv ? 'bg-primary text-on-primary border-primary' : 'bg-black/30 text-white border-white/20 hover:border-primary hover:bg-primary hover:text-on-primary'}`}>
+          <span className="material-symbols-outlined text-[16px]">{sv ? 'bookmark' : 'bookmark_border'}</span>
+          {sv ? 'Saved' : 'Save'}
+        </button>
+      </div>
+    </div>
+  )
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -424,62 +481,8 @@ export default function RecipeDetailPage() {
   const requiredIngredients = recipe.ingredients?.filter((i) => !i.optional) || []
   const optionalIngredients = recipe.ingredients?.filter((i) => i.optional)  || []
 
-  // ── FOOD ITEM HERO ────────────────────────────────────────────────────────
-  function FoodItemHero({ recipe: r, isSaved: sv, onSave, onAddToPlan, scoreColorClass: scFn, CATEGORY_LABELS: CL }) {
-    const { imageUrl, isLoading: imgLoad } = useFoodImage(r)
-    const [imgErr, setImgErr] = useState(false)
-    const grad = CATEGORY_GRADIENTS[r.category] || 'from-surface-container to-surface-container-high'
-    const showImg = imageUrl && !imgErr
-    return (
-      <div className="relative h-52 sm:h-72 rounded-2xl overflow-hidden mb-6 shadow-md">
-        {imgLoad && !showImg && <div className={`w-full h-full bg-gradient-to-br ${grad} animate-pulse`} />}
-        {showImg && (
-          <img src={imageUrl} alt={r.name} className="w-full h-full object-cover"
-            onError={() => setImgErr(true)} />
-        )}
-        {!showImg && !imgLoad && (
-          <div className={`w-full h-full flex items-center justify-center bg-gradient-to-br ${grad}`}>
-            <span className="text-8xl sm:text-9xl select-none">{r.food_emoji || '🍽️'}</span>
-          </div>
-        )}
-        {/* dark overlay for text readability */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none" />
-        <div className="absolute bottom-4 left-4 flex items-center gap-2">
-          <span className={`text-sm font-black px-3 py-1.5 rounded-xl shadow-lg ${scFn(r.health_score)}`}>
-            Health Score {r.health_score}
-          </span>
-          {r.category && (
-            <span className="text-xs font-semibold px-3 py-1.5 rounded-xl bg-black/50 text-white backdrop-blur-sm">
-              {CL[r.category] || r.category}
-            </span>
-          )}
-        </div>
-        <div className="absolute top-4 right-4 flex gap-2">
-          <button onClick={onAddToPlan}
-            className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-semibold border transition-colors backdrop-blur-sm bg-secondary-container text-secondary border-secondary/30 hover:bg-secondary hover:text-white">
-            <span className="material-symbols-outlined text-[16px]">calendar_add_on</span>
-            Add to Plan
-          </button>
-          <button onClick={onSave}
-            className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-semibold border transition-colors backdrop-blur-sm
-              ${sv ? 'bg-primary text-on-primary border-primary' : 'bg-black/30 text-white border-white/20 hover:border-primary hover:bg-primary hover:text-on-primary'}`}>
-            <span className="material-symbols-outlined text-[16px]">{sv ? 'bookmark' : 'bookmark_border'}</span>
-            {sv ? 'Saved' : 'Save'}
-          </button>
-        </div>
-      </div>
-    )
-  }
-
   // ── FOOD ITEM VIEW ────────────────────────────────────────────────────────
   if (isFoodItem) {
-    const CATEGORY_LABELS = {
-      fruit: 'Fruit', vegetable: 'Vegetable', legume: 'Legume', nut_seed: 'Nut & Seed',
-      grain: 'Grain & Cereal', millet: 'Millet', dairy: 'Dairy', fermented: 'Fermented',
-      spice: 'Spice & Herb', herb: 'Herb', dish: 'Dish', sweet: 'Sweet',
-      snack: 'Snack', beverage: 'Beverage', meat: 'Meat', seafood: 'Fish & Seafood',
-      egg: 'Egg', oil: 'Oil & Fat', condiment: 'Condiment', bread: 'Bread',
-    }
     return (
       <div className="min-h-screen bg-surface">
         <div className="px-4 sm:px-8 py-8 max-w-6xl mx-auto">
@@ -491,7 +494,7 @@ export default function RecipeDetailPage() {
           </button>
 
           {/* Hero */}
-          <FoodItemHero recipe={recipe} isSaved={isSaved} onSave={() => toggleSave(recipe.id)} onAddToPlan={() => setAddToPlanOpen(true)} scoreColorClass={scoreColorClass} CATEGORY_LABELS={CATEGORY_LABELS} />
+          <FoodItemHero recipe={recipe} isSaved={isSaved} onSave={() => toggleSave(recipe.id)} onAddToPlan={() => setAddToPlanOpen(true)} />
 
           {/* Title */}
           <div className="mb-6">

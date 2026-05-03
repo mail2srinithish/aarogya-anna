@@ -1,125 +1,129 @@
-# 🍽️ AarogyaAnna — AI-Powered Diet & Nutrition Platform
+# AarogyaAnna 🌿
 
-A full-stack health and nutrition application featuring AI-powered meal planning, recipe discovery (Indian cuisine), personalized dietary recommendations, and a Groq-powered nutritional chatbot.
+> The Modern Alchemist — India's AI-powered nutrition and meal planning platform.
+
+Built with **React 19 + Vite** (frontend) and **Node.js + Express + SQLite** (backend).  
+AI is powered by **Groq (Llama 3.3 70B)** — free tier is enough to run the full app.
+
+---
+
+## Quick Start (after cloning)
+
+### 1. Get a Groq API key — FREE, takes 30 seconds
+Go to **https://console.groq.com/keys** → Sign up → Create API key → Copy it.
+
+### 2. Set up the backend
+```bash
+cd backend
+npm install
+cp .env.example .env
+```
+Open `backend/.env` and replace `your_groq_api_key_here` with your actual key:
+```
+GROQ_API_KEY=gsk_xxxxxxxxxxxxxxxxxxxx
+```
+That is the **only required change**. All other values have working defaults.
+
+### 3. Set up the frontend
+```bash
+cd frontend
+npm install
+```
+No `.env` file needed for the frontend — it proxies API calls to the backend automatically.
+
+### 4. Run both servers (two terminals)
+
+**Terminal 1 — Backend:**
+```bash
+cd backend
+npm run dev          # uses nodemon for auto-reload
+# OR
+npm start            # plain node
+```
+Backend runs at **http://localhost:5000**
+
+**Terminal 2 — Frontend:**
+```bash
+cd frontend
+npm run dev
+```
+Frontend runs at **http://localhost:5173**
+
+Open **http://localhost:5173** in your browser. The app is ready.
+
+---
+
+## What works without extra setup
+
+| Feature | Status |
+|---|---|
+| Recipes page (1,200+ Indian foods) | ✅ Works immediately |
+| Meal Planner (weekly, drag & drop) | ✅ Works immediately |
+| Dashboard with nutrition tracking | ✅ Works immediately |
+| AarogyaAI chatbot | ✅ Works with Groq key |
+| Open Food Facts live search | ✅ Works (no key needed) |
+| USDA food search | ✅ Works with DEMO_KEY |
+| Wikipedia food images | ✅ Works (no key needed) |
+| Google Sign-In | ⚠️ Optional (add OAuth credentials) |
+| Email (password reset) | ⚠️ Optional (add SMTP config) |
+| Redis cache | ⚠️ Optional (app works without it) |
+
+---
 
 ## Tech Stack
 
 | Layer | Technology |
-|-------|-----------|
-| **Frontend** | React 19 + Vite 8 + Tailwind CSS 3 |
-| **Backend** | Node.js 20+ + Express 5 |
-| **Database** | SQLite (via better-sqlite3) |
-| **AI Chatbot** | Groq Cloud (Llama 3.1) |
-| **State** | Zustand + React Query |
-| **Charts** | Recharts |
+|---|---|
+| Frontend | React 19, Vite, Tailwind CSS, Zustand, React Query |
+| Backend | Node.js, Express, better-sqlite3 (SQLite) |
+| AI | Groq API — llama-3.3-70b-versatile |
+| Food Data | Local DB (1,262 items) + Open Food Facts + USDA |
+| Images | Wikipedia REST API thumbnails |
+| Auth | JWT + optional Google OAuth |
+
+---
 
 ## Project Structure
 
 ```
 aarogya-anna/
-├── frontend/          → React 19 + Vite (port 5173)
-├── backend/           → Express 5 API   (port 5000)
-├── x-docs/            → UML diagrams & documentation
-├── abt/               → Startup guide
-└── package.json       → Root: runs both with `npm run dev`
+├── backend/
+│   ├── .env.example        ← copy to .env and add your Groq key
+│   ├── server.js
+│   └── src/
+│       ├── controllers/    ← chatController uses GROQ_API_KEY
+│       ├── routes/
+│       └── config/         ← SQLite db auto-created on first run
+├── frontend/
+│   ├── src/
+│   │   ├── pages/          ← Dashboard, Recipes, Planner, Chatbot
+│   │   ├── data/foodsDb/   ← 1,262 Indian food items (local)
+│   │   ├── hooks/          ← useFoodImage (Wikipedia thumbnails)
+│   │   ├── services/       ← Open Food Facts, USDA APIs
+│   │   └── store/          ← Zustand state (meal plan, profile)
+│   └── vite.config.js      ← proxies /api → localhost:5000
+└── data/
+    └── aarogya_anna.db     ← auto-created SQLite file (gitignored)
 ```
 
 ---
 
-## 🚀 Quick Start (New System Setup)
+## Why the AI didn't work on clone
 
-### Prerequisites
-
-| Tool | Version | Download |
-|------|---------|----------|
-| **Node.js** | 20+ | https://nodejs.org |
-| **Git** | any | https://git-scm.com |
-
-> **Redis & Docker are optional** — the app works fully without them.
-
-### 1. Clone the Repository
-
-```bash
-git clone https://github.com/YOUR_USERNAME/aarogya-anna.git
-cd aarogya-anna
-```
-
-### 2. Install All Dependencies
-
-```bash
-# From root directory — installs backend + frontend
-npm run install:all
-
-# Also install root dev dependencies (concurrently)
-npm install
-```
-
-### 3. Configure Environment
-
-```bash
-cd aarogya-anna/backend
-cp .env.example .env        # Linux/Mac
-# OR
-copy .env.example .env      # Windows
-```
-
-Edit `.env` and set your values:
-- `JWT_SECRET` — any long random string
-- `GROQ_API_KEY` — free from https://console.groq.com
-
-### 4. Run the Application
-
-```bash
-# From root directory — starts both backend & frontend
-npm run dev
-```
-
-- **Frontend:** http://localhost:5173
-- **Backend:** http://localhost:5000
-- **Health Check:** http://localhost:5000/health
+The `GROQ_API_KEY` is stored in `backend/.env` which is gitignored (never committed to GitHub for security). After cloning, follow Step 1 & 2 above to add your own free key.
 
 ---
 
-## 📋 Available Scripts
+## Common Issues
 
-| Command | Description |
-|---------|-------------|
-| `npm run dev` | Starts backend + frontend concurrently |
-| `npm run install:all` | Installs dependencies for both backend & frontend |
-| `npm run build` | Builds frontend for production |
+**"Cannot connect to AI service"**  
+→ Check that `GROQ_API_KEY` is set in `backend/.env` and the backend is running.
 
----
+**Frontend shows blank page**  
+→ Make sure both servers are running (frontend on 5173, backend on 5000).
 
-## 🔑 Environment Variables
+**Port already in use**  
+→ Change `PORT=5000` in `backend/.env` and update `vite.config.js` proxy target.
 
-Copy `backend/.env.example` → `backend/.env` and configure:
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `JWT_SECRET` | ✅ | Secret key for JWT tokens |
-| `JWT_REFRESH_SECRET` | ✅ | Secret key for refresh tokens |
-| `GROQ_API_KEY` | ✅ | AI chatbot (free at console.groq.com) |
-| `USDA_API_KEY` | ❌ | Nutrition data sync |
-| `GOOGLE_CLIENT_ID` | ❌ | Google OAuth login |
-| `REDIS_HOST` | ❌ | Caching (app works without it) |
-
----
-
-## 🔄 Keeping Systems in Sync
-
-```bash
-# On the system where you made changes:
-git add .
-git commit -m "describe your changes"
-git push
-
-# On the other system:
-git pull
-npm run install:all    # only if package.json changed
-```
-
----
-
-## 📝 License
-
-Private project — All rights reserved.
+**Database errors on first run**  
+→ The SQLite file is created automatically. No setup needed. If you see errors, delete `data/aarogya_anna.db` and restart the backend.
